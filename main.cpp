@@ -559,7 +559,7 @@ int main(int argc,char** argv)
 
 	}
 
-    int display_contour = 35;
+    int display_contour = 17;
 
     //processing
     auto height_contour= getHeightContour(contours[display_contour]);
@@ -571,7 +571,7 @@ int main(int argc,char** argv)
 
     //2 create heigh getting function from xyz
 
-	canvas::set_title(L"polyline Example");
+	canvas::set_title(L"test");
 	canvas::set_size(window_size, window_size);
 
     
@@ -579,7 +579,7 @@ int main(int argc,char** argv)
         using namespace canvas::color;
 
         canvas::buffer buf;
-        buf.set_size(window_size, window_size, gray);
+        buf.set_size(window_size, window_size, black);
 #pragma region drawing
         //buf.draw_line(0, 0, 100, 100, canvas::rgb(255, 0, 0));
         int display_idx = display_contour;
