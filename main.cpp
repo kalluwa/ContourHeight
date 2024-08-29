@@ -10,6 +10,8 @@
 #include "glm-aabb/aabb.hpp"
 #include "simplifyPath.h"
 
+#include "bvhHelper.h"
+
 
 template<class T>
 struct Contour
@@ -517,8 +519,52 @@ std::vector<Contour<glm::vec2>> getHeightContour(const SliceContours<glm::vec3>&
     return heightcontours;
 }
 
-int main(int argc,char** argv)
+
+void test()
 {
+    auto slabs = [](glm::vec3 p0, glm::vec3 p1, glm::vec3 rayOrigin, glm::vec3 invRaydir)->bool {
+        glm::vec3 t0 = (p0 - rayOrigin) * invRaydir;
+        glm::vec3 t1 = (p1 - rayOrigin) * invRaydir;
+        glm::vec3 tmin = min(t0, t1), tmax = max(t0, t1);
+        //return max_component(tmin) <= min_component(tmax);
+
+        float max_component = std::max<float>(std::max<float>(tmin.x, tmin.y), tmin.z);
+        float min_component = std::min<float>(std::min<float>(tmax.x, tmax.y), tmax.z);
+
+        return max_component <= min_component;
+    };
+
+    auto intersection = [](glm::vec3 p0, glm::vec3 p1, glm::vec3 rayOrigin, glm::vec3 invRaydir) ->bool {
+        float tmin = 0.0, tmax = INFINITY;
+
+        for (int d = 0; d < 3; ++d) {
+            float t1 = (p0[d] - rayOrigin[d]) * invRaydir[d];
+            float t2 = (p1[d] - rayOrigin[d]) * invRaydir[d];
+
+			tmin = std::min<float>(std::max<float>(t1, tmin), std::max<float>(t2, tmin));
+			tmax = std::max<float>(std::min<float>(t1, tmax), std::min<float>(t2, tmax));
+        }
+
+        return tmin <= tmax;
+    };
+
+    bool re = slabs(glm::vec3(-1, -1, -1), glm::vec3(1, 1, 1), glm::vec3(5, 10, 0), 1.0f/glm::vec3(0, -1, 0));
+
+    printf(re ? "intersect" : "no intersect");
+
+}
+
+void testBVH()
+{
+    using namespace BVH;
+    internal_test();
+}
+int main(int argc, char** argv)
+{
+    //test();
+
+    testBVH();
+
     //initialize variables
 
 	int window_size = 800;
