@@ -54,11 +54,26 @@ namespace BVH
 	//};
 
 	//version 2
+	//struct BVHNode
+	//{
+	//	float3 aabbMin, aabbMax;     // 24 bytes 外包围盒的两个角点
+	//	uint leftChild;// , rightChild;//rightChild is always leftChild + 1  // 8 bytes  当前节点左右两个child所在的索引（N个叶子元素最后会生成2N-1个节点）
+	//	uint firstPrim, primCount;   // 8 bytes; total: 44 bytes 节点包含三角形区间第一个图元的索引，以及有多少个图元
+	//	bool isLeaf()
+	//	{
+	//		return primCount != 0;
+	//	}
+	//};
+
+	//version 3
+	//‘leftFirst’ variable depends on triCount. If it is 0, 
+	// leftFirst contains the index of the left child node. Otherwise,
+	// it contains the index of the first triangle index.
 	struct BVHNode
 	{
 		float3 aabbMin, aabbMax;     // 24 bytes 外包围盒的两个角点
-		uint leftChild;// , rightChild;//rightChild is always leftChild + 1  // 8 bytes  当前节点左右两个child所在的索引（N个叶子元素最后会生成2N-1个节点）
-		uint firstPrim, primCount;   // 8 bytes; total: 44 bytes 节点包含三角形区间第一个图元的索引，以及有多少个图元
+		uint leftFirst;// , rightChild;//rightChild is always leftChild + 1  // 8 bytes  当前节点左右两个child所在的索引（N个叶子元素最后会生成2N-1个节点）
+		uint primCount;   // 8 bytes; total: 44 bytes 节点包含三角形区间第一个图元的索引，以及有多少个图元
 		bool isLeaf()
 		{
 			return primCount != 0;
@@ -104,9 +119,9 @@ namespace BVH
 				float3 r0(RandomFloat(), RandomFloat(), RandomFloat());
 				float3 r1(RandomFloat(), RandomFloat(), RandomFloat());
 				float3 r2(RandomFloat(), RandomFloat(), RandomFloat());
-				tri[i].vertex0 = r0 * 9.0f - float3(5.0f);
-				tri[i].vertex1 = tri[i].vertex0 + r1;
-				tri[i].vertex2 = tri[i].vertex0 + r2;
+				tri[i].vertex0 = r0 * 18.0f - float3(5.0f);
+				tri[i].vertex1 = tri[i].vertex0 + r1*0.1f;
+				tri[i].vertex2 = tri[i].vertex0 + r2 * 0.1f;
 			}
 		};
 
@@ -129,8 +144,8 @@ namespace BVH
 				tri[i].centroid = (tri[i].vertex0 + tri[i].vertex1 + tri[i].vertex2) * 0.3333f;
 			// assign all triangles to root node
 			BVHNode& root = bvhNode[rootNodeIdx];
-			root.leftChild = 0;// root.rightChild = 0;
-			root.firstPrim = 0, root.primCount = N;
+			root.leftFirst = 0;// root.rightChild = 0;
+			root.primCount = N;
 			UpdateNodeBounds(rootNodeIdx);
 			// subdivide recursively
 			Subdivide(rootNodeIdx);
@@ -140,7 +155,7 @@ namespace BVH
 		{
 			auto& node = bvhNode[node_idx];
 			glm::AABB box;
-			for (int first = node.firstPrim,i=0; i < node.primCount; i++)
+			for (int first = node.leftFirst,i=0; i < node.primCount; i++)
 			{
 				box.extend(tri[first+i].vertex0);
 				box.extend(tri[first+i].vertex1);
@@ -162,7 +177,7 @@ namespace BVH
 
 			float middle_value = ((node.aabbMin + node.aabbMax) * 0.5f)[axis];
 			//2 split triangles 并不需要按照从小到大的顺序，只需要小的在左边，大的在右边
-			int i = node.firstPrim, j = i + node.primCount-1;
+			int i = node.leftFirst, j = i + node.primCount-1;
 			while (i < j)
 			{
 				if (tri[i].centroid[axis] < middle_value)
@@ -172,24 +187,24 @@ namespace BVH
 			}
 			//--------------------------------------------------------------------------
 			//3 create two child node
-			int leftcount = i - node.firstPrim;
+			int leftcount = i - node.leftFirst;
 			//分不出来两个节点，那就没有必要细分了
 			if (leftcount == 0 || leftcount == node.primCount) return;
 
 			int left_child_idx = node_used++;
 			int right_child_idx = node_used++;
 			
-			//assign to parent
-			node.leftChild = left_child_idx;
 			//node.rightChild = right_child_idx;
 			auto& leftchild = bvhNode[left_child_idx];
-			leftchild.firstPrim = node.firstPrim;
+			leftchild.leftFirst = node.leftFirst;
 			leftchild.primCount = leftcount;
 			
 			auto& rightchild = bvhNode[right_child_idx];
-			rightchild.firstPrim = i;
+			rightchild.leftFirst = i;
 			rightchild.primCount = node.primCount - leftcount;
 			//remove node content
+			//assign to parent
+			node.leftFirst = left_child_idx;
 			node.primCount = 0;
 			UpdateNodeBounds(left_child_idx);
 			UpdateNodeBounds(right_child_idx);
@@ -208,13 +223,13 @@ namespace BVH
 			if (node.isLeaf())
 			{
 				for (auto i = 0; i < node.primCount; i++)
-					intersect |= IntersectTri(ray, tri[node.firstPrim + i]);
+					intersect |= IntersectTri(ray, tri[node.leftFirst + i]);
 
 			}
 			else
 			{
-				intersect |= IntersectBVH(ray, node.leftChild);
-				intersect |= IntersectBVH(ray, node.leftChild+1);
+				intersect |= IntersectBVH(ray, node.leftFirst);
+				intersect |= IntersectBVH(ray, node.leftFirst +1);
 			}
 			return intersect;
 		}
@@ -253,10 +268,11 @@ namespace BVH
 		};
 	};
 
+
 	inline void internal_test()
 	{
 		std::unique_ptr<BVHHelper> bvhhelper(new BVHHelper);
-		bvhhelper->init(640);
+		bvhhelper->init(640000);
 		elapse_time();
 		bvhhelper->BuildBVH();
 		float3 camPos(0, 0, -18);
